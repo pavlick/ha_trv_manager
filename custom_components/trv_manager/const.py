@@ -13,12 +13,14 @@ CONF_P_GAIN: Final = "p_gain"
 CONF_I_GAIN: Final = "i_gain"
 CONF_ANTI_WINDUP_GAIN: Final = "anti_windup_gain"
 CONF_TRV_DWELL_TIME: Final = "trv_dwell_time"
+CONF_VALVE_STEP: Final = "valve_step"
 
 # Default values
 DEFAULT_P_GAIN: Final = 10.0  # Proportional gain (valve % per degree error)
 DEFAULT_I_GAIN: Final = 0.5   # Integral gain (valve % per degree-minute)
 DEFAULT_ANTI_WINDUP_GAIN: Final = 1.0  # Back-calculation gain
 DEFAULT_TRV_DWELL_TIME: Final = 60  # Seconds between TRV target temperature updates
+DEFAULT_VALVE_STEP: Final = 5  # Valve position step size in % (prevents micro-adjustments)
 
 # Limits
 MIN_TRV_TARGET_TEMP: Final = 5.0  # °C

@@ -15,9 +15,11 @@ from .const import (
     CONF_TRV_ENTITY,
     CONF_TRV_DWELL_TIME,
     CONF_VALVE_POSITION_ENTITY,
+    CONF_VALVE_STEP,
     DEFAULT_I_GAIN,
     DEFAULT_P_GAIN,
     DEFAULT_TRV_DWELL_TIME,
+    DEFAULT_VALVE_STEP,
     DOMAIN,
 )
 from .coordinator import TRVManagerCoordinator
@@ -37,6 +39,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     trv_dwell_time = entry.options.get(
         CONF_TRV_DWELL_TIME, entry.data.get(CONF_TRV_DWELL_TIME, DEFAULT_TRV_DWELL_TIME)
     )
+    valve_step = entry.options.get(
+        CONF_VALVE_STEP, entry.data.get(CONF_VALVE_STEP, DEFAULT_VALVE_STEP)
+    )
 
     # Create coordinator
     coordinator = TRVManagerCoordinator(
@@ -49,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         p_gain,
         i_gain,
         trv_dwell_time,
+        valve_step,
     )
 
     # Set up the coordinator

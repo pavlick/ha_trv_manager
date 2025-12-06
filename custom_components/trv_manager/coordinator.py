@@ -30,6 +30,7 @@ from .const import (
     CONF_ANTI_WINDUP_GAIN,
     DEFAULT_ANTI_WINDUP_GAIN,
     DEFAULT_TRV_DWELL_TIME,
+    DEFAULT_VALVE_STEP,
     DOMAIN,
     MAX_TRV_TARGET_TEMP,
     MAX_VALVE_POSITION,
@@ -55,6 +56,7 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         p_gain: float,
         i_gain: float,
         trv_dwell_time: int = DEFAULT_TRV_DWELL_TIME,
+        valve_step: int = DEFAULT_VALVE_STEP,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -73,12 +75,14 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._i_gain = i_gain
         self._anti_windup_gain = DEFAULT_ANTI_WINDUP_GAIN
         self._trv_dwell_time = trv_dwell_time  # Seconds between TRV updates
+        self._valve_step = valve_step  # Valve position step size
 
         # PI controller state
         self._integrator: float = 0.0
         self._last_update: datetime | None = None
         self._last_trv_update: datetime | None = None  # Track TRV temperature updates
         self._last_target_temp: float | None = None  # Track target temp changes
+        self._last_valve_position: int | None = None  # Track last sent valve position
         self._last_error: float = 0.0
         self._last_hvac_action: str | None = None  # Track transitions
         self._startup_attempts: int = 0  # Track startup attempts
@@ -186,13 +190,14 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update PI controller and return valve position output (0-100).
         
         Uses back-calculation anti-windup to prevent integrator windup.
+        Output is rounded to steps to prevent micro-adjustments.
         
         Args:
             error: Temperature error (target - reference)
             dt: Time delta in seconds since last update
             
         Returns:
-            Valve position as integer (0-100)
+            Valve position as integer (0-100), rounded to configured step
         """
         if dt <= 0:
             dt = 1.0  # Prevent division by zero
@@ -224,13 +229,17 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Not saturated - normal integration
             self._integrator += error * dt_minutes
 
+        # Round to step size to prevent micro-adjustments
+        # This prevents 99%->100%->99% oscillations and saves battery
+        valve_stepped = round(valve_output_actual / self._valve_step) * self._valve_step
+        valve_stepped = int(max(MIN_VALVE_POSITION, min(MAX_VALVE_POSITION, valve_stepped)))
+
         _LOGGER.debug(
-            "PI Controller: error=%f, dt=%f, P=%f, I=%f, valve_output=%f, integrator=%f",
-            error, dt, p_term, i_term, valve_output_actual, self._integrator
+            "PI Controller: error=%f, dt=%f, P=%f, I=%f, raw=%f, stepped=%d%% (step=%d%%), integrator=%f",
+            error, dt, p_term, i_term, valve_output_actual, valve_stepped, self._valve_step, self._integrator
         )
 
-        # Return as integer for clean valve position values
-        return round(valve_output_actual)
+        return valve_stepped
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data and update TRV."""
@@ -346,9 +355,24 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # TRV is idle (not heating), set valve to 100% to allow normal operation
                 # This ensures TRV can heat properly if HA becomes unavailable
                 valve_output = 100
-                _LOGGER.debug(
-                    "TRV is idle (hvac_action=idle), setting valve to 100%% (allow full heating capability)"
-                )
+                
+                # Only send if changed
+                if valve_output != self._last_valve_position:
+                    await self.hass.services.async_call(
+                        NUMBER_DOMAIN,
+                        SERVICE_SET_VALUE,
+                        {
+                            ATTR_ENTITY_ID: self.valve_position_entity,
+                            "value": valve_output,
+                        },
+                        blocking=True,
+                    )
+                    self._last_valve_position = valve_output
+                    
+                    _LOGGER.debug(
+                        "TRV idle, valve set to 100%% (failsafe, was %s)",
+                        self._last_valve_position or "unknown"
+                    )
             else:
                 # TRV is active, update valve position with PI controller
                 now = datetime.now()
@@ -367,21 +391,30 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 valve_output = self._update_pi_controller(error, dt)
 
-                # Set valve position
-                await self.hass.services.async_call(
-                    NUMBER_DOMAIN,
-                    SERVICE_SET_VALUE,
-                    {
-                        ATTR_ENTITY_ID: self.valve_position_entity,
-                        "value": valve_output,
-                    },
-                    blocking=True,
-                )
-                
-                _LOGGER.debug(
-                    "Valve position updated: hvac_action=%s, valve=%d%%",
-                    hvac_action, valve_output
-                )
+                # Only send command if valve position actually changed
+                if valve_output != self._last_valve_position:
+                    old_position = self._last_valve_position
+                    
+                    await self.hass.services.async_call(
+                        NUMBER_DOMAIN,
+                        SERVICE_SET_VALUE,
+                        {
+                            ATTR_ENTITY_ID: self.valve_position_entity,
+                            "value": valve_output,
+                        },
+                        blocking=True,
+                    )
+                    self._last_valve_position = valve_output
+                    
+                    _LOGGER.debug(
+                        "Valve position updated: hvac_action=%s, %s → %d%% (step=%d%%)",
+                        hvac_action, old_position, valve_output, self._valve_step
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Valve position unchanged at %d%%, skipping update",
+                        valve_output
+                    )
             
             # Store current hvac_action for next transition detection
             self._last_hvac_action = hvac_action
