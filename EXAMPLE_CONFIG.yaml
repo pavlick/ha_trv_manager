@@ -1,0 +1,140 @@
+# Example Home Assistant Configuration for TRV Manager
+#
+# This file shows example entities that would work with TRV Manager.
+# You don't need to add anything to configuration.yaml - the integration
+# is configured through the UI (Config Flow).
+
+# Example: External temperature sensor (already exists in your HA)
+# This could be from any integration - Zigbee, Z-Wave, ESPHome, etc.
+sensor:
+  - platform: mqtt
+    name: "Living Room Temperature"
+    state_topic: "home/living_room/temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+
+# Example: Target temperature schedule using input_number
+input_number:
+  living_room_target_temp:
+    name: Living Room Target Temperature
+    min: 15
+    max: 25
+    step: 0.5
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+
+# Example: Automation to change target temperature based on schedule
+automation:
+  - alias: "Living Room Temperature Schedule"
+    trigger:
+      - platform: time
+        at: "06:00:00"
+      - platform: time
+        at: "08:00:00"
+      - platform: time
+        at: "22:00:00"
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.living_room_target_temp
+        data:
+          value: >
+            {% if now().hour == 6 %}
+              20.5
+            {% elif now().hour == 8 %}
+              19.0
+            {% else %}
+              18.0
+            {% endif %}
+
+# Example: TRV climate entity (from Zigbee2MQTT or other integration)
+# climate.living_room_trv_1
+# climate.living_room_trv_2
+
+# Example: Valve position entity (if your TRV supports it)
+# number.living_room_trv_1_position
+# number.living_room_trv_2_position
+
+# =============================================================================
+# TRV Manager Configuration Through UI
+# =============================================================================
+# 
+# After installing the integration:
+#
+# 1. Go to Settings → Devices & Services
+# 2. Click "+ ADD INTEGRATION"
+# 3. Search for "TRV Manager"
+# 4. Fill in the configuration form:
+#
+#    Instance 1 (Living Room TRV 1):
+#    - Name: Living Room TRV 1 Manager
+#    - TRV Climate Entity: climate.living_room_trv_1
+#    - Reference Temperature Sensor: sensor.living_room_temperature
+#    - Target Temperature Entity: input_number.living_room_target_temp
+#    - Valve Position Entity: number.living_room_trv_1_position (optional)
+#    - P Gain: 10.0 (default)
+#    - I Gain: 0.5 (default)
+#
+#    Instance 2 (Living Room TRV 2):
+#    - Name: Living Room TRV 2 Manager
+#    - TRV Climate Entity: climate.living_room_trv_2
+#    - Reference Temperature Sensor: sensor.living_room_temperature (same!)
+#    - Target Temperature Entity: input_number.living_room_target_temp (same!)
+#    - Valve Position Entity: number.living_room_trv_2_position (optional)
+#    - P Gain: 10.0 (default)
+#    - I Gain: 0.5 (default)
+#
+# =============================================================================
+# Entities Created by TRV Manager
+# =============================================================================
+#
+# For each instance, TRV Manager creates:
+#
+# Configuration entities:
+#   - number.living_room_trv_1_manager_p_gain
+#   - number.living_room_trv_1_manager_i_gain
+#
+# Diagnostic sensors (disabled by default):
+#   - sensor.living_room_trv_1_manager_error
+#   - sensor.living_room_trv_1_manager_integrator
+#   - sensor.living_room_trv_1_manager_temp_adjustment
+#   - sensor.living_room_trv_1_manager_valve_output
+#
+# =============================================================================
+# Advanced: Using Template Sensor for Target Temperature
+# =============================================================================
+#
+# If you want more complex scheduling, use a template sensor:
+
+template:
+  - sensor:
+      - name: "Living Room Target Temperature"
+        unit_of_measurement: "°C"
+        state: >
+          {% set hour = now().hour %}
+          {% set is_weekend = now().weekday() in [5, 6] %}
+          
+          {# Weekend schedule #}
+          {% if is_weekend %}
+            {% if 7 <= hour < 23 %}
+              21.0
+            {% else %}
+              18.0
+            {% endif %}
+          
+          {# Weekday schedule #}
+          {% else %}
+            {% if 6 <= hour < 8 %}
+              20.5
+            {% elif 8 <= hour < 17 %}
+              19.0
+            {% elif 17 <= hour < 23 %}
+              21.0
+            {% else %}
+              18.0
+            {% endif %}
+          {% endif %}
+
+# Then use sensor.living_room_target_temperature as the target temperature
+# entity in TRV Manager configuration.
+

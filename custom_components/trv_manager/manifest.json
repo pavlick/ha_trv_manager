@@ -1,0 +1,13 @@
+{
+  "domain": "trv_manager",
+  "name": "TRV Manager",
+  "codeowners": ["@pavel"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/pavel/trv_manager",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.1.0"
+}
+
