@@ -19,8 +19,10 @@ from .const import (
     CONF_VALVE_POSITION_ENTITY,
     CONF_P_GAIN,
     CONF_I_GAIN,
+    CONF_TRV_DWELL_TIME,
     DEFAULT_P_GAIN,
     DEFAULT_I_GAIN,
+    DEFAULT_TRV_DWELL_TIME,
     MIN_P_GAIN,
     MAX_P_GAIN,
     MIN_I_GAIN,
@@ -74,6 +76,10 @@ class TRVManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_I_GAIN,
                     default=DEFAULT_I_GAIN,
                 ): vol.All(vol.Coerce(float), vol.Range(min=MIN_I_GAIN, max=MAX_I_GAIN)),
+                vol.Optional(
+                    CONF_TRV_DWELL_TIME,
+                    default=DEFAULT_TRV_DWELL_TIME,
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
             }
         )
 
@@ -144,6 +150,12 @@ class TRVManagerOptionsFlow(config_entries.OptionsFlow):
                         CONF_I_GAIN, current_data.get(CONF_I_GAIN, DEFAULT_I_GAIN)
                     ),
                 ): vol.All(vol.Coerce(float), vol.Range(min=MIN_I_GAIN, max=MAX_I_GAIN)),
+                vol.Optional(
+                    CONF_TRV_DWELL_TIME,
+                    default=current_options.get(
+                        CONF_TRV_DWELL_TIME, current_data.get(CONF_TRV_DWELL_TIME, DEFAULT_TRV_DWELL_TIME)
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
             }
         )
 

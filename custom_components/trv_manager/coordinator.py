@@ -29,6 +29,7 @@ from .const import (
     CONF_VALVE_POSITION_ENTITY,
     CONF_ANTI_WINDUP_GAIN,
     DEFAULT_ANTI_WINDUP_GAIN,
+    DEFAULT_TRV_DWELL_TIME,
     DOMAIN,
     MAX_TRV_TARGET_TEMP,
     MAX_VALVE_POSITION,
@@ -53,6 +54,7 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         valve_position_entity: str | None,
         p_gain: float,
         i_gain: float,
+        trv_dwell_time: int = DEFAULT_TRV_DWELL_TIME,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -70,11 +72,15 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._p_gain = p_gain
         self._i_gain = i_gain
         self._anti_windup_gain = DEFAULT_ANTI_WINDUP_GAIN
+        self._trv_dwell_time = trv_dwell_time  # Seconds between TRV updates
 
         # PI controller state
         self._integrator: float = 0.0
         self._last_update: datetime | None = None
+        self._last_trv_update: datetime | None = None  # Track TRV temperature updates
+        self._last_target_temp: float | None = None  # Track target temp changes
         self._last_error: float = 0.0
+        self._last_hvac_action: str | None = None  # Track transitions
         self._startup_attempts: int = 0  # Track startup attempts
 
         # Data storage
@@ -282,25 +288,59 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Clamp to safe limits
         adjusted_target = max(MIN_TRV_TARGET_TEMP, min(MAX_TRV_TARGET_TEMP, adjusted_target))
 
-        # Set TRV target temperature
-        await self.hass.services.async_call(
-            CLIMATE_DOMAIN,
-            SERVICE_SET_TEMPERATURE,
-            {
-                ATTR_ENTITY_ID: self.trv_entity,
-                ATTR_TEMPERATURE: adjusted_target,
-            },
-            blocking=True,
+        # Determine if we should update TRV
+        now = datetime.now()
+        target_temp_changed = (
+            self._last_target_temp is None or
+            abs(target_temp - self._last_target_temp) > 0.01
         )
+        
+        dwell_time_elapsed = (
+            self._last_trv_update is None or
+            (now - self._last_trv_update).total_seconds() >= self._trv_dwell_time
+        )
+        
+        # Update TRV if target changed OR dwell time elapsed
+        should_update_trv = target_temp_changed or dwell_time_elapsed
+
+        if should_update_trv:
+            # Set TRV target temperature
+            await self.hass.services.async_call(
+                CLIMATE_DOMAIN,
+                SERVICE_SET_TEMPERATURE,
+                {
+                    ATTR_ENTITY_ID: self.trv_entity,
+                    ATTR_TEMPERATURE: adjusted_target,
+                },
+                blocking=True,
+            )
+            self._last_trv_update = now
+            self._last_target_temp = target_temp
+            
+            if target_temp_changed:
+                _LOGGER.debug("TRV target updated to %f (target temperature changed)", adjusted_target)
+            else:
+                _LOGGER.debug("TRV target updated to %f (dwell time elapsed)", adjusted_target)
+        else:
+            time_remaining = self._trv_dwell_time - (now - self._last_trv_update).total_seconds()
+            _LOGGER.debug(
+                "Skipping TRV update (dwell time: %ds remaining)", int(time_remaining)
+            )
 
         # Calculate error for PI controller
         error = target_temp - reference_temp
 
+        # Get TRV hvac_action (for all TRVs, not just those with valve control)
+        hvac_action = trv_state.attributes.get("hvac_action") if trv_state else None
+
         # Update PI controller if we have valve control
         valve_output = 0
         if self.valve_position_entity:
-            # Check if TRV is actively heating
-            hvac_action = trv_state.attributes.get("hvac_action") if trv_state else None
+            # Detect transition from idle to heating
+            transitioning_to_heating = (
+                self._last_hvac_action == "idle" and 
+                hvac_action not in ("idle", None)
+            )
             
             if hvac_action == "idle":
                 # TRV is idle (not heating), set valve to 100% to allow normal operation
@@ -314,6 +354,16 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 now = datetime.now()
                 dt = (now - self._last_update).total_seconds() if self._last_update else 1.0
                 self._last_update = now
+
+                # On transition from idle to heating, reduce integrator to prevent valve swing
+                if transitioning_to_heating:
+                    # Reduce integrator by 50% to provide smoother transition
+                    old_integrator = self._integrator
+                    self._integrator *= 0.5
+                    _LOGGER.debug(
+                        "Transition idle→heating detected, reducing integrator: %f → %f",
+                        old_integrator, self._integrator
+                    )
 
                 valve_output = self._update_pi_controller(error, dt)
 
@@ -332,6 +382,9 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "Valve position updated: hvac_action=%s, valve=%d%%",
                     hvac_action, valve_output
                 )
+            
+            # Store current hvac_action for next transition detection
+            self._last_hvac_action = hvac_action
 
         # Update stored data
         self.data.update({
