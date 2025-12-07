@@ -234,6 +234,23 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         valve_stepped = round(valve_output_actual / self._valve_step) * self._valve_step
         valve_stepped = int(max(MIN_VALVE_POSITION, min(MAX_VALVE_POSITION, valve_stepped)))
 
+        # Apply hysteresis: only change if difference is more than half a step
+        # This prevents ringing at step boundaries (17%->15%, 18%->20%, 17%->15%...)
+        if self._last_valve_position is not None:
+            diff = abs(valve_stepped - self._last_valve_position)
+            # Only change if at least one full step different
+            if diff > 0 and diff < self._valve_step:
+                # Too close to current position, don't change
+                valve_stepped = self._last_valve_position
+                _LOGGER.debug(
+                    "Hysteresis: raw=%f would step to %d%%, but only %d%% from current %d%% (< step=%d%%), keeping current",
+                    valve_output_actual, 
+                    round(valve_output_actual / self._valve_step) * self._valve_step,
+                    diff,
+                    self._last_valve_position,
+                    self._valve_step
+                )
+
         _LOGGER.debug(
             "PI Controller: error=%f, dt=%f, P=%f, I=%f, raw=%f, stepped=%d%% (step=%d%%), integrator=%f",
             error, dt, p_term, i_term, valve_output_actual, valve_stepped, self._valve_step, self._integrator
