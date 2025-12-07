@@ -12,6 +12,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_DEVICE_ID,
     CONF_I_GAIN,
     CONF_P_GAIN,
     DOMAIN,
@@ -33,16 +34,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up TRV Manager number entities."""
-    coordinator: TRVManagerCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    
-    # Get initial values from config or options
-    p_gain = entry.options.get(CONF_P_GAIN, entry.data.get(CONF_P_GAIN))
-    i_gain = entry.options.get(CONF_I_GAIN, entry.data.get(CONF_I_GAIN))
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry_data["coordinators"]
 
-    entities = [
-        TRVManagerPGainNumber(coordinator, entry, p_gain),
-        TRVManagerIGainNumber(coordinator, entry, i_gain),
-    ]
+    entities = []
+
+    # Create P and I gain entities for each device
+    for device_id, device_data in coordinators.items():
+        coordinator: TRVManagerCoordinator = device_data["coordinator"]
+        device_name = device_data["device_name"]
+
+        entities.extend([
+            TRVManagerPGainNumber(coordinator, entry, device_id, device_name),
+            TRVManagerIGainNumber(coordinator, entry, device_id, device_name),
+        ])
 
     async_add_entities(entities)
 
@@ -59,21 +64,25 @@ class TRVManagerPGainNumber(NumberEntity):
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
-        initial_value: float,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the P gain number."""
         self._coordinator = coordinator
         self._entry = entry
-        self._attr_native_value = initial_value
+        self._device_id = device_id
+        self._attr_native_value = coordinator._p_gain
         self._attr_native_min_value = MIN_P_GAIN
         self._attr_native_max_value = MAX_P_GAIN
         
         self._attr_name = "P Gain"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_P_GAIN}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_P_GAIN}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     async def async_set_native_value(self, value: float) -> None:
@@ -82,7 +91,7 @@ class TRVManagerPGainNumber(NumberEntity):
         self._coordinator.update_gains(p_gain=value)
         self.async_write_ha_state()
         
-        _LOGGER.info("P gain updated to %f", value)
+        _LOGGER.info("P gain updated to %f for device %s", value, self._device_id)
 
 
 class TRVManagerIGainNumber(NumberEntity):
@@ -97,21 +106,25 @@ class TRVManagerIGainNumber(NumberEntity):
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
-        initial_value: float,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the I gain number."""
         self._coordinator = coordinator
         self._entry = entry
-        self._attr_native_value = initial_value
+        self._device_id = device_id
+        self._attr_native_value = coordinator._i_gain
         self._attr_native_min_value = MIN_I_GAIN
         self._attr_native_max_value = MAX_I_GAIN
         
         self._attr_name = "I Gain"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_I_GAIN}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_I_GAIN}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     async def async_set_native_value(self, value: float) -> None:
@@ -120,5 +133,4 @@ class TRVManagerIGainNumber(NumberEntity):
         self._coordinator.update_gains(i_gain=value)
         self.async_write_ha_state()
         
-        _LOGGER.info("I gain updated to %f", value)
-
+        _LOGGER.info("I gain updated to %f for device %s", value, self._device_id)

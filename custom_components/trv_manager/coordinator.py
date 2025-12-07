@@ -49,6 +49,7 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         hass: HomeAssistant,
         entry_id: str,
+        device_id: str,
         trv_entity: str,
         reference_temp_entity: str,
         target_temp_entity: str,
@@ -62,10 +63,12 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN}_{entry_id}",
+            name=f"{DOMAIN}_{entry_id}_{device_id}",
             update_interval=None,  # We handle updates manually
         )
 
+        self.entry_id = entry_id
+        self.device_id = device_id
         self.trv_entity = trv_entity
         self.reference_temp_entity = reference_temp_entity
         self.target_temp_entity = target_temp_entity

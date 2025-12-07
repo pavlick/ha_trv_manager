@@ -34,14 +34,22 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up TRV Manager sensor entities."""
-    coordinator: TRVManagerCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry_data["coordinators"]
 
-    entities = [
-        TRVManagerErrorSensor(coordinator, entry),
-        TRVManagerIntegratorSensor(coordinator, entry),
-        TRVManagerTempAdjustmentSensor(coordinator, entry),
-        TRVManagerValveOutputSensor(coordinator, entry),
-    ]
+    entities = []
+
+    # Create diagnostic sensors for each device
+    for device_id, device_data in coordinators.items():
+        coordinator: TRVManagerCoordinator = device_data["coordinator"]
+        device_name = device_data["device_name"]
+
+        entities.extend([
+            TRVManagerErrorSensor(coordinator, entry, device_id, device_name),
+            TRVManagerIntegratorSensor(coordinator, entry, device_id, device_name),
+            TRVManagerTempAdjustmentSensor(coordinator, entry, device_id, device_name),
+            TRVManagerValveOutputSensor(coordinator, entry, device_id, device_name),
+        ])
 
     async_add_entities(entities)
 
@@ -60,15 +68,20 @@ class TRVManagerErrorSensor(CoordinatorEntity[TRVManagerCoordinator], SensorEnti
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the error sensor."""
         super().__init__(coordinator)
+        self._device_id = device_id
         self._attr_name = "Temperature Error"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_ERROR}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_ERROR}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     @property
@@ -89,15 +102,20 @@ class TRVManagerIntegratorSensor(CoordinatorEntity[TRVManagerCoordinator], Senso
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the integrator sensor."""
         super().__init__(coordinator)
+        self._device_id = device_id
         self._attr_name = "Integrator Value"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_INTEGRATOR}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_INTEGRATOR}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     @property
@@ -120,15 +138,20 @@ class TRVManagerTempAdjustmentSensor(CoordinatorEntity[TRVManagerCoordinator], S
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the temperature adjustment sensor."""
         super().__init__(coordinator)
+        self._device_id = device_id
         self._attr_name = "Temperature Adjustment"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_TEMP_ADJUSTMENT}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_TEMP_ADJUSTMENT}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     @property
@@ -150,19 +173,23 @@ class TRVManagerValveOutputSensor(CoordinatorEntity[TRVManagerCoordinator], Sens
         self,
         coordinator: TRVManagerCoordinator,
         entry: ConfigEntry,
+        device_id: str,
+        device_name: str,
     ) -> None:
         """Initialize the valve output sensor."""
         super().__init__(coordinator)
+        self._device_id = device_id
         self._attr_name = "Valve Position Output"
-        self._attr_unique_id = f"{entry.entry_id}{ENTITY_ID_VALVE_OUTPUT}"
+        self._attr_unique_id = f"{entry.entry_id}_{device_id}{ENTITY_ID_VALVE_OUTPUT}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.data[CONF_NAME],
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_{device_id}")},
+            "name": device_name,
             "manufacturer": "TRV Manager",
+            "model": "TRV Controller",
+            "via_device": (DOMAIN, entry.entry_id),
         }
 
     @property
     def native_value(self) -> int | None:
         """Return the valve position output."""
         return self.coordinator.data.get("valve_output")
-

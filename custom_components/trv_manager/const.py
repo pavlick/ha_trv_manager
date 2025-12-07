@@ -4,10 +4,15 @@ from typing import Final
 
 DOMAIN: Final = "trv_manager"
 
-# Configuration keys
-CONF_TRV_ENTITY: Final = "trv_entity"
+# Hub configuration keys (shared by all devices)
 CONF_REFERENCE_TEMP_ENTITY: Final = "reference_temp_entity"
 CONF_TARGET_TEMP_ENTITY: Final = "target_temp_entity"
+CONF_DEVICES: Final = "devices"
+
+# Device configuration keys (per TRV device)
+CONF_DEVICE_ID: Final = "device_id"
+CONF_DEVICE_NAME: Final = "device_name"
+CONF_TRV_ENTITY: Final = "trv_entity"
 CONF_VALVE_POSITION_ENTITY: Final = "valve_position_entity"
 CONF_P_GAIN: Final = "p_gain"
 CONF_I_GAIN: Final = "i_gain"
