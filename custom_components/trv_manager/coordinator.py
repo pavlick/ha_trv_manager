@@ -458,6 +458,9 @@ class TRVManagerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             reference_temp, target_temp, trv_temp, adjusted_target, error, valve_output
         )
 
+        # Notify all listeners (sensors, etc.) that data has been updated
+        self.async_set_updated_data(self.data)
+
         return self.data
 
     async def _async_update_valve_only(self) -> None:
